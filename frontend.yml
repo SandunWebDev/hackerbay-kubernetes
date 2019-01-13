@@ -1,0 +1,59 @@
+# Deployments For Hackerbay Frontend
+# Deployments are used to easily manage and config how "pods" should organized and behave.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hb-frontend-deployment
+spec:
+  # Specifing how many replicas of this pod we need. We can also manually scale(up and down) using kubectl.
+  replicas: 1
+  # Selectors are used to add condition based on labele.
+  selector:
+    matchLabels:
+      app: hb-frontend-pod
+  # Specifiying containers used in this pod.
+  template:
+    # Specifying labels to be later used as selectors. (Like in above)
+    metadata:
+      labels:
+        app: hb-frontend-pod
+    spec:
+      # All the containers in a single pod share same localhost, volumes and other resources. 
+      # So one container can access another container like localhost:8080 if that container port is exposed using "containerPort". No need of "Service" for that.
+      containers:
+        - name: hb-frontend-container
+          # Forcing to download image even if its available locally. This make sure most upto date production image is used.
+          imagePullPolicy: Always
+          image: sandunwebdev/hb-frontend-image-prod:release
+          ports:
+            # Port names can't be long more than 15 chars. 
+            - name: hb-fe-port
+              # Exposing a port to kubernetes that already exposed in docker container.
+              containerPort: 80
+
+---
+
+# Services are used to expose ports so pods, nodes, cluster, external can talk to each other as needed.
+apiVersion: v1
+kind: Service
+metadata:
+  name: hb-frontend-service
+  labels:
+    app: hb-frontend-pod
+spec:
+  selector:
+      app: hb-frontend-pod
+  ports:
+    - name: hb-frontend-service-http-port
+      protocol: TCP
+      # Port used inside kubernetes. (Simplly any traffic to this port redirected to tragetPort.)
+      port: 80
+      # Port exposed in docker container.
+      targetPort: 80
+  # There are different kind of serivice type. 
+  # (1). ClusterIP - Enable inside communcation between nodes, clusters, etc.
+  # (2). NodePort - Enable outsider to communcate between pods, nodes, clusters, etc.
+  # (3). LoadBalancer - Enable outsider to communcate between pods, nodes, clusters, etc. Also manage traffic between multiple replicas. Also in real production enviroment get assigned external ip so end user can just access things using that ip.
+
+  # In "minikube" enviroment getting connected to pods is tricky. Use "minikube service postgresdb-service --url" to find out exact ip to connect.
+  type: LoadBalancer

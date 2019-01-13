@@ -1,0 +1,143 @@
+# Deployments For PostgresDB + Adminer(As Admin GUI)
+# Deployments are used to easily manage and config how "pods" should organized and behave.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgresdb-deployment
+spec:
+  # Specifing how many replicas of this pod we need. We can also manually scale(up and down) using kubectl.
+  replicas: 1
+  # Selectors are used to add condition based on labele.
+  selector:
+    matchLabels:
+      app: postgresdb-pod
+  # Specifiying containers used in this pod.
+  template:
+    # Specifying labels to be later used as selectors. (Like in above)
+    metadata:
+      labels:
+        app: postgresdb-pod
+    spec:
+      # All the containers in a single pod share same localhost, volumes and other resources. 
+      # So one container can access another container like localhost:8080 if that container port is exposed using "containerPort". No need of "Service" for that.
+      containers:
+        - name: postgresdb-container
+          image: postgres:9.6-alpine
+          # Loading env variable using below simple way is currently result in strange error. So for now we are manually set up env from secret file one by one.
+          #       envFrom:
+          #         - secretRef:
+          #             name: mysecret
+
+          # Make sure "secret object config" (With necessry values filled) is created by executing one of below before this file is executed. 
+          # kubectl apply -f backend.secrets.yml
+
+          # Or just execute below command with pre-existing ".env" file to make same "secret object config".
+          # kubectl create secret generic backend-secrets --from-file=./.env
+          env:
+            # In here we are using specific env. values in postgres container to setup database ceratain ways. (See Postgres Docker Doc)
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: DBNAME
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: DBUSERNAME
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: DBPASSWORD
+            # We could have also have run a commands like below instead of setting it from env. values.
+            #     command: ["psql"]
+            #     args: ["-c" "CREATE DATABASE $(POSTGRES_DB);" "-U postgres"] ....
+          ports:
+            - name: postgresdb-port
+              # Exposing a port to kubernetes that already exposed in docker container.
+              containerPort: 5432
+          volumeMounts:
+              # Specifying to use specific pre-defined(See Below) presistent volume to this container. So even if pod or node got deleted, data keep on. 
+            - name: postgresdb-data
+              # Specifying where on container that volume should be mounted.
+              mountPath: /var/lib/postgresql/data
+        # This container just used as a easy admin GUI to manage our postgresdb. In GUI we can use "localhost" or "specific-pod name" (kubectl get pods) as server name to get conneced
+        - name: adminer-container
+          image: adminer
+          ports:
+            - name: adminer-port
+              containerPort: 8080
+      # Specifying volumes that we intendent use in this deployement. (Like in above)
+      volumes:
+        - name: postgresdb-data
+          # Specifying to use specific pre-defined volume that we declared below.
+          persistentVolumeClaim: 
+            claimName: postgresdb-data-volumeclaim
+
+---
+
+# Services are used to expose ports so pods, nodes, cluster, external can talk to each other as needed.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgresdb-service
+  labels:
+    app: postgresdb-pod
+spec:
+  selector:
+      app: postgresdb-pod
+  ports:
+    - name: postgresdb-service-postgres-port
+      protocol: TCP
+      # Port used inside kubernetes. (Simplly any traffic to this port redirected to tragetPort.)
+      port: 5432
+      # Port exposed in docker container.
+      targetPort: 5432
+    - name: postgresdb-service-adminer-port
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+  # There are different kind of serivice type. 
+  # (1). ClusterIP - Enable inside communcation between nodes, clusters, etc.
+  # (2). NodePort - Enable outsider to communcate between pods, nodes, clusters, etc.
+  # (3). LoadBalancer - Enable outsider to communcate between pods, nodes, clusters, etc. Also manage traffic between multiple replicas. Also in real production enviroment get assigned external ip so end user can just access things using that ip.
+  #
+  # Other containers, pods can access these expose ports easily by service name as hostname. (Ex. http://postgresdb-service/hello-world)
+  #
+  # In "minikube" enviroment, getting connected from external enviroment to pods is tricky. Use "minikube service postgresdb-service --url" to find out exact ip to connect.
+  type: ClusterIP
+
+---
+# There are lots of type of storage we can use. In here for "minikube" enviroment we are using Presitent Volumes that stored in minikube VM.
+# Normally Presistent volumes are created by Kubernetes Administrator and later developers use "PersistentVolumeClaim" to get portion from it.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgresdb-presistentvolume
+  labels:
+    app: postgresdb-podpostgres
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  # Where data actually get started.
+  hostPath:
+    path: "/mnt/data"
+
+---
+# PersistentVolumeClaim to get storage for our pod containers. This is what we used in "deployment" "volume" specifications.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgresdb-data-volumeclaim
+  labels:
+    app: postgresdb-pod
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

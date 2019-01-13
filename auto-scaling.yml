@@ -1,0 +1,50 @@
+# Make sure "metric-server" add-on already running as its needed to get metric values like CPU Usage. 
+
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: auto-scaler-hb-backend
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hb-backend-deployment
+  minReplicas: 1
+  maxReplicas: 4
+  # Just know there is lots of other metrics (or we can also create our own custom metrics) we can used to deside when to do auto scaling.
+  targetCPUUtilizationPercentage: 50
+
+---
+
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: auto-scaler-hb-frontend
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hb-frontend-deployment
+  minReplicas: 1
+  maxReplicas: 3
+  # Just know there is lots of other metrics (or we can also create our own custom metrics) we can used to deside when to do auto scaling.
+  targetCPUUtilizationPercentage: 50
+
+---
+
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: auto-scaler-hb-postgresdb
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: postgresdb-deployment
+  minReplicas: 1
+  maxReplicas: 4
+  # Just know there is lots of other metrics (or we can also create our own custom metrics) we can used to deside when to do auto scaling.
+  targetCPUUtilizationPercentage: 50
