@@ -1,0 +1,140 @@
+# Deployments For Hackerbay Backend
+# Deployments are used to easily manage and config how "pods" should organized and behave.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hb-backend-deployment
+spec:
+  # Specifing how many replicas of this pod we need. We can also manually scale(up and down) using kubectl.
+  replicas: 1
+  # Selectors are used to add condition based on labele.
+  selector:
+    matchLabels:
+      app: hb-backend-pod
+  # Specifiying containers used in this pod.
+  template:
+    # Specifying labels to be later used as selectors. (Like in above)
+    metadata:
+      labels:
+        app: hb-backend-pod
+    spec:
+      # "Init containers" allow us to run some command insided an seperate container before original containers are start to run, and unitl those command finish up sucessfully (exit code 0), original containers never start.
+      # This allow us to wait until some another pod is start up and running. (For example in here we are waiting for "postgres" pod before starting backend.)
+      initContainers:
+      - name: check-db-ready
+        image: postgres:9.6-alpine
+        command: ['sh', '-c', 
+          'until pg_isready -h postgresdb-service -p 5432; 
+          do echo Waiting For Database; sleep 2; done;']
+
+      # All the containers in a single pod share same localhost, volumes and other resources. 
+      # So one container can access another container like localhost:8080 if that container port is exposed using "containerPort". No need of "Service" for that.
+      containers:
+        - name: hb-backend-container
+          # Forcing to download image even if its available locally. This make sure most upto date production image is used.
+          imagePullPolicy: Always
+          image: sandunwebdev/hb-backend-image-prod:release
+          # Loading env variable using below simple way is currently result in strange error. So for now we are manually set up env from secret file one by one.
+          #       envFrom:
+          #         - secretRef:
+          #             name: mysecret
+
+          # Make sure "secret object config" (With necessry values filled) is created by executing one of below before this file is executed. 
+          # kubectl apply -f backend.secrets.yml
+
+          # Or just execute below command with pre-existing ".env" file to make same "secret object config".
+          # kubectl create secret generic backend-secrets --from-file=./.env
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: NODE_ENV
+            - name: PORT
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: PORT
+            - name: CORS_WHITE_LIST
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: CORS_WHITE_LIST
+            - name: DBNAME
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: DBNAME
+            - name: DBUSERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: DBUSERNAME
+            - name: DBPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: DBPASSWORD
+            - name: DBHOST
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: DBHOST
+            - name: JWTSECRET
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: JWTSECRET
+            - name: JWTEXPIRES
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: JWTEXPIRES
+            - name: TWILIO_SID
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: TWILIO_SID
+            - name: TWILIO_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: TWILIO_TOKEN
+            - name: TWILIO_NUMBER
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: TWILIO_NUMBER
+          ports:
+            - name: hb-backend-port
+              # Exposing a port to kubernetes that already exposed in docker container.
+              containerPort: 80
+
+---
+
+# Services are used to expose ports so pods, nodes, cluster, external can talk to each other as needed.
+apiVersion: v1
+kind: Service
+metadata:
+  name: hb-backend-service
+  labels:
+    app: hb-backend-pod
+spec:
+  selector:
+      app: hb-backend-pod
+  ports:
+    - name: hb-backend-service-http-port
+      protocol: TCP
+      # Port used inside kubernetes. (Simplly any traffic to this port redirected to tragetPort.)
+      port: 80
+      # Port exposed in docker container.
+      targetPort: 80
+  # There are different kind of serivice type. 
+  # (1). ClusterIP - Enable inside communcation between nodes, clusters, etc.
+  # (2). NodePort - Enable outsider to communcate between pods, nodes, clusters, etc.
+  # (3). LoadBalancer - Enable outsider to communcate between pods, nodes, clusters, etc. Also manage traffic between multiple replicas. Also in real production enviroment get assigned external ip so end user can just access things using that ip.
+  #
+  # Other containers, pods can access these expose ports easily by service name as hostname. (Ex. http://postgresdb-service/hello-world)
+  #
+  # In "minikube" enviroment, getting connected from external enviroment to pods is tricky. Use "minikube service postgresdb-service --url" to find out exact ip to connect.
+  type: LoadBalancer
