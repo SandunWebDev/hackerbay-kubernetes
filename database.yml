@@ -62,6 +62,7 @@ spec:
             - name: postgresdb-data
               # Specifying where on container that volume should be mounted.
               mountPath: /var/lib/postgresql/data
+              subPath: mydata
         # This container just used as a easy admin GUI to manage our postgresdb. In GUI we can use "localhost" or "specific-pod name" (kubectl get pods) as server name to get conneced
         - name: adminer-container
           image: adminer

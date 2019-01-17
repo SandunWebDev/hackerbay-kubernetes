@@ -33,7 +33,7 @@ spec:
         - name: hb-backend-container
           # Forcing to download image even if its available locally. This make sure most upto date production image is used.
           imagePullPolicy: Always
-          image: sandunwebdev/hb-backend-image-prod:release
+          image: sandunwebdev/hb-backend-image-prod:kubernetes
           # Loading env variable using below simple way is currently result in strange error. So for now we are manually set up env from secret file one by one.
           #       envFrom:
           #         - secretRef:
